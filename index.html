@@ -1,744 +1,620 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>手指挑选器</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生命倒计时 · 珍惜当下</title>
 <style>
-  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-  body { background: #0a0a1a; color: #e0e0f0; display: flex; align-items: center; justify-content: center; }
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg-dark:#0a0e27;
+  --bg-mid:#12163a;
+  --gold:#f0c040;
+  --gold-dim:#b8942a;
+  --urgent:#ff6b6b;
+  --card-bg:rgba(255,255,255,0.04);
+  --card-border:rgba(255,255,255,0.07);
+  --text:#e8e6f0;
+  --text-dim:rgba(232,230,240,0.55);
+  --radius:16px;
+  --font:'PingFang SC','Microsoft YaHei','Noto Sans SC',system-ui,-apple-system,sans-serif;
+}
+body{
+  font-family:var(--font);
+  background:var(--bg-dark);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+  line-height:1.6;
+}
+#particleCanvas{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  pointer-events:none;z-index:0;
+}
 
-  #app {
-    width: 100%; height: 100%; max-width: 1000px; max-height: 900px;
-    display: flex; flex-direction: column; padding: 12px; gap: 10px;
-  }
+/* ──── main ──── */
+main{
+  position:relative;z-index:1;
+  max-width:780px;margin:0 auto;padding:40px 24px 60px;
+}
 
-  /* ---- Header ---- */
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 14px; background: rgba(255,255,255,0.04); border-radius: 14px;
-    flex-shrink: 0; flex-wrap: wrap; gap: 8px;
-  }
-  header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: 1px; white-space: nowrap; }
-  .config { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
-  .config input[type="range"] {
-    width: 100px; accent-color: #6c6cff; cursor: pointer;
-  }
-  .config .count-display {
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: 28px; height: 28px; border-radius: 8px;
-    background: rgba(108,108,255,0.2); color: #b0b0ff; font-weight: 700; font-size: 0.95rem;
-  }
+/* ──── header ──── */
+.site-header{
+  text-align:center;padding:40px 0 20px;
+  opacity:0;animation:fadeIn 1s 0.2s forwards;
+}
+.site-header h1{
+  font-size:clamp(28px,6vw,48px);font-weight:800;
+  background:linear-gradient(135deg,#f0c040,#ff8a5c);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;letter-spacing:2px;
+}
+.site-header p{
+  color:var(--text-dim);font-size:clamp(14px,2.5vw,18px);margin-top:8px;
+}
 
-  /* ---- Touch Area ---- */
-  #touchArea {
-    flex: 1; position: relative; border-radius: 16px; overflow: hidden;
-    background: radial-gradient(ellipse at 30% 40%, #151535, #08081a);
-    box-shadow: inset 0 0 80px rgba(60,60,180,0.08), 0 0 0 1px rgba(255,255,255,0.04);
-    touch-action: none; user-select: none; -webkit-user-select: none;
-    cursor: crosshair; min-height: 280px;
-  }
-  #touchArea .grid-pattern {
-    position: absolute; inset: 0; pointer-events: none; opacity: 0.06;
-    background-image:
-      linear-gradient(rgba(255,255,255,0.3) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px);
-    background-size: 40px 40px;
-  }
+/* ──── quote ──── */
+.quote-bar{
+  text-align:center;padding:12px 0 28px;opacity:0;
+  animation:fadeIn 1s 0.4s forwards;
+}
+.quote-bar blockquote{
+  font-size:clamp(13px,2vw,17px);color:var(--text-dim);
+  font-style:italic;max-width:580px;margin:0 auto;
+  border-left:2px solid var(--gold);padding-left:18px;
+  transition:opacity 0.8s;
+}
 
-  /* -- Finger Circles (DOM) -- */
-  .finger-circle {
-    position: absolute; border-radius: 50%; pointer-events: none;
-    transform: translate(-50%, -50%);
-    width: 60px; height: 60px;
-    background: rgba(255,255,255,0.06);
-    border: 2px solid rgba(255,255,255,0.7);
-    box-shadow: 0 0 18px rgba(255,255,255,0.15), inset 0 0 12px rgba(255,255,255,0.05);
-    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
-    z-index: 2;
-  }
-  .finger-circle .inner {
-    position: absolute; inset: 10px; border-radius: 50%;
-    background: rgba(255,255,255,0.15);
-    box-shadow: inset 0 0 8px rgba(255,255,255,0.1);
-  }
-  .finger-circle.selected {
-    border-color: #ffd700;
-    box-shadow: 0 0 30px rgba(255,215,0,0.5), 0 0 60px rgba(255,215,0,0.2), inset 0 0 16px rgba(255,215,0,0.05);
-    background: rgba(255,215,0,0.08);
-  }
-  .finger-circle.selected .inner {
-    background: rgba(255,215,0,0.2);
-    box-shadow: inset 0 0 12px rgba(255,215,0,0.15);
-  }
-  .finger-circle .checkmark {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 1.6rem; opacity: 0; transform: scale(0.3);
-    transition: opacity 0.4s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-    pointer-events: none; z-index: 3;
-  }
-  .finger-circle.selected .checkmark { opacity: 1; transform: scale(1); }
-  .finger-circle .number-tag {
-    position: absolute; top: -8px; right: -8px;
-    width: 22px; height: 22px; border-radius: 50%;
-    background: #ffd700; color: #1a1a2e;
-    font-size: 0.7rem; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    opacity: 0; transform: scale(0); transition: opacity 0.3s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
-  }
-  .finger-circle.selected .number-tag { opacity: 1; transform: scale(1); }
+/* ──── input section ──── */
+#inputSection{
+  background:var(--card-bg);backdrop-filter:blur(12px);
+  border:1px solid var(--card-border);
+  border-radius:var(--radius);padding:36px 32px;
+  opacity:0;animation:fadeIn 0.8s 0.5s forwards;
+  transition:opacity 0.6s,transform 0.6s;
+}
+#inputSection.hidden{opacity:0;transform:translateY(20px);pointer-events:none;max-height:0;overflow:hidden;padding:0 32px;margin:0;border:0;}
+.input-row{display:flex;gap:20px;flex-wrap:wrap;}
+.input-group{flex:1;min-width:200px;}
+.input-group label{display:block;font-size:14px;color:var(--text-dim);margin-bottom:6px;font-weight:500;}
+ .date-selectors{display:flex;gap:8px;}
+ .date-selectors select{
+   flex:1;padding:12px 4px;border-radius:10px;
+   border:1px solid var(--card-border);
+   background:#1a1e42;
+   color:var(--text);font-size:16px;font-family:var(--font);
+   outline:none;transition:border-color 0.3s;
+   cursor:pointer;
+   -webkit-appearance:none;appearance:none;
+ }
+ .date-selectors select:focus{border-color:var(--gold);}
+ .date-selectors select option{background:#1a1e42;color:var(--text);}
+.input-group input[type="range"]{
+  width:100%;margin-top:6px;
+  -webkit-appearance:none;appearance:none;
+  height:4px;border-radius:2px;background:rgba(255,255,255,0.15);
+  outline:none;
+}
+.input-group input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--gold);cursor:pointer;
+  box-shadow:0 0 12px rgba(240,192,64,0.4);
+}
+#lifeSpanValue{color:var(--gold);font-weight:700;}
+.btn-start{
+  display:block;width:100%;margin-top:24px;
+  padding:14px;border:none;border-radius:12px;
+  background:linear-gradient(135deg,var(--gold),var(--gold-dim));
+  color:#0a0e27;font-size:17px;font-weight:700;
+  font-family:var(--font);cursor:pointer;
+  transition:transform 0.2s,box-shadow 0.3s;
+  letter-spacing:1px;
+}
+.btn-start:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(240,192,64,0.3);}
+.btn-start:active{transform:translateY(0);}
 
-  /* -- Canvas overlay -- */
-  #overlay {
-    position: absolute; inset: 0; width: 100%; height: 100%; display: block;
-    pointer-events: none; z-index: 4;
-  }
+/* ──── result section ──── */
+#resultSection{
+  display:none;margin-top:20px;
+  opacity:0;transition:opacity 0.8s;
+}
+#resultSection.visible{display:block;opacity:1;}
 
-  /* ---- Footer ---- */
-  footer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 14px; background: rgba(255,255,255,0.04); border-radius: 14px;
-    flex-shrink: 0; flex-wrap: wrap; gap: 8px;
-  }
-  .status-bar { display: flex; align-items: center; gap: 12px; font-size: 0.85rem; }
-  .status-bar .pill {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 4px 12px; border-radius: 20px; background: rgba(255,255,255,0.06);
-  }
-  .status-bar .pill .num { font-weight: 700; color: #ffd700; min-width: 14px; text-align: center; }
-  .btn-group { display: flex; gap: 8px; }
-  .btn {
-    padding: 8px 22px; border: none; border-radius: 10px; font-size: 0.85rem; font-weight: 600;
-    cursor: pointer; transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
-    letter-spacing: 0.5px; white-space: nowrap;
-  }
-  .btn:active { transform: scale(0.95); }
-  .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
-  .btn-primary {
-    background: linear-gradient(135deg, #5c5cff, #3a3acc);
-    color: #fff; box-shadow: 0 2px 14px rgba(92,92,255,0.3);
-  }
-  .btn-primary:hover:not(:disabled) { box-shadow: 0 4px 24px rgba(92,92,255,0.45); }
-  .btn-reset {
-    background: rgba(255,255,255,0.08); color: #b0b0c0;
-    border: 1px solid rgba(255,255,255,0.1);
-  }
-  .btn-reset:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+/* ──── countdown ──── */
+.countdown-card{
+  background:var(--card-bg);backdrop-filter:blur(12px);
+  border:1px solid var(--card-border);
+  border-radius:var(--radius);padding:32px 24px;
+  text-align:center;position:relative;overflow:hidden;
+}
+.countdown-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);
+}
+.countdown-label{font-size:14px;color:var(--text-dim);margin-bottom:16px;letter-spacing:2px;}
+.countdown-main{
+  display:flex;justify-content:center;align-items:baseline;
+  gap:clamp(4px,1.5vw,16px);flex-wrap:wrap;
+}
+.countdown-item{display:flex;flex-direction:column;align-items:center;}
+.countdown-item .num{
+  font-size:clamp(32px,8vw,72px);font-weight:800;
+  background:linear-gradient(180deg,#fff 40%,var(--gold));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;line-height:1;font-variant-numeric:tabular-nums;
+  transition:all 0.3s;
+}
+.countdown-item .lbl{font-size:12px;color:var(--text-dim);margin-top:4px;}
+.countdown-sep{font-size:clamp(20px,5vw,44px);color:var(--text-dim);font-weight:200;margin:0 2px;}
 
-  .hint {
-    font-size: 0.8rem; color: rgba(255,255,255,0.3); text-align: center;
-    flex-basis: 100%; padding-top: 2px;
-    transition: color 0.3s;
-  }
-  .hint.active { color: rgba(255,255,255,0.6); }
-  .hint.error { color: #ff6b6b; }
-  .hint.success { color: #ffd700; }
+/* ──── progress ring ──── */
+.progress-section{margin-top:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;justify-content:center;}
+.progress-ring-wrap{position:relative;width:140px;height:140px;flex-shrink:0;}
+.progress-ring-wrap svg{transform:rotate(-90deg);width:100%;height:100%;}
+.progress-ring-bg{fill:none;stroke:rgba(255,255,255,0.08);stroke-width:8;}
+.progress-ring-fill{fill:none;stroke:url(#ringGrad);stroke-width:8;stroke-linecap:round;
+  transition:stroke-dashoffset 1s ease;}
+.progress-center{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;
+}
+.progress-center .pct{font-size:28px;font-weight:800;color:var(--gold);}
+.progress-center .pct-lbl{font-size:12px;color:var(--text-dim);}
+.progress-text{flex:1;min-width:160px;}
+.progress-text .stat-row{display:flex;justify-content:space-between;padding:6px 0;font-size:14px;border-bottom:1px solid rgba(255,255,255,0.05);}
+.progress-text .stat-row .val{font-weight:600;color:var(--gold);}
+.progress-text .stat-row .val.warn{color:var(--urgent);}
 
-  /* ---- Selection Flash ---- */
-  .flash-overlay {
-    position: absolute; inset: 0; pointer-events: none; z-index: 5;
-    border-radius: 16px; opacity: 0; transition: opacity 0.1s;
-  }
-  .flash-overlay.show { opacity: 1; }
+/* ──── metrics ──── */
+.metrics-grid{margin-top:24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;}
+.metric-card{
+  background:var(--card-bg);backdrop-filter:blur(8px);
+  border:1px solid var(--card-border);
+  border-radius:14px;padding:20px 18px;
+  text-align:center;transition:transform 0.3s,box-shadow 0.3s;
+  opacity:0;transform:translateY(20px);
+}
+.metric-card.animate-in{animation:cardIn 0.5s forwards;}
+.metric-card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,0.3);}
+.metric-card .icon{font-size:32px;margin-bottom:6px;}
+.metric-card .value{
+  font-size:clamp(24px,4vw,36px);font-weight:800;
+  color:var(--gold);line-height:1.2;
+  font-variant-numeric:tabular-nums;
+}
+.metric-card .desc{font-size:13px;color:var(--text-dim);margin-top:4px;}
+.metric-card .sub{font-size:11px;color:rgba(232,230,240,0.3);margin-top:2px;}
 
-  /* ---- Responsive ---- */
-  @media (max-width: 480px) {
-    #app { padding: 8px; gap: 8px; }
-    header h1 { font-size: 1rem; }
-    .config input[type="range"] { width: 70px; }
-    .finger-circle { width: 48px; height: 48px; }
-    .finger-circle .inner { inset: 7px; }
-    .finger-circle .checkmark { font-size: 1.2rem; }
-    .btn { padding: 7px 16px; font-size: 0.8rem; }
-  }
-  @media (min-width: 768px) {
-    .finger-circle { width: 72px; height: 72px; }
-    .finger-circle .inner { inset: 12px; }
-    .finger-circle .checkmark { font-size: 2rem; }
-  }
+/* ──── footer ──── */
+.site-footer{text-align:center;padding:40px 0 20px;opacity:0;animation:fadeIn 1s 1s forwards;}
+.site-footer p{font-size:14px;color:var(--text-dim);line-height:1.8;}
+.site-footer .highlight{color:var(--gold);font-weight:600;}
+
+/* ──── animations ──── */
+@keyframes fadeIn{to{opacity:1}}
+@keyframes cardIn{
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes twinkle{
+  0%,100%{opacity:0.3}
+  50%{opacity:1}
+}
+@keyframes pulse{
+  0%,100%{box-shadow:0 0 12px rgba(240,192,64,0.2)}
+  50%{box-shadow:0 0 28px rgba(240,192,64,0.5)}
+}
+.countdown-card.active{animation:pulse 3s infinite;}
+
+/* ──── responsive ──── */
+@media(max-width:540px){
+  main{padding:24px 16px 40px;}
+  #inputSection{padding:24px 18px;}
+  .input-row{flex-direction:column;}
+  .countdown-main{gap:6px;}
+  .progress-section{flex-direction:column;text-align:center;}
+  .metrics-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+  .metric-card{padding:16px 12px;}
+}
 </style>
 </head>
 <body>
-<div id="app">
-  <header>
-    <h1>&#10022; 手指挑选器</h1>
-    <div class="config">
-      <label for="countSlider">挑选人数</label>
-      <input type="range" id="countSlider" min="1" max="20" value="3">
-      <span class="count-display" id="countDisplay">3</span>
-    </div>
+
+<canvas id="particleCanvas"></canvas>
+
+<main>
+  <header class="site-header">
+    <h1>⏳ 你的生命还剩多少？</h1>
+    <p>在时间的长河里，看清当下的重量</p>
   </header>
 
-  <div id="touchArea">
-    <div class="grid-pattern"></div>
-    <div class="flash-overlay" id="flashOverlay"></div>
-    <canvas id="overlay"></canvas>
+  <div class="quote-bar">
+    <blockquote id="quoteText">"生命如同沙漏，我们总以为还有很多，但每一粒沙落下都不会回头。"</blockquote>
   </div>
 
-  <footer>
-    <div class="status-bar">
-      <span class="pill">已选中 <span class="num" id="selectedNum">0</span></span>
-      <span class="pill">目标 <span class="num" id="targetNum">3</span></span>
+  <!-- ──── input ──── -->
+  <section id="inputSection">
+    <div class="input-row">
+      <div class="input-group">
+        <label>📅 出生日期</label>
+        <div class="date-selectors">
+          <select id="birthYear"></select>
+          <select id="birthMonth"></select>
+          <select id="birthDay"></select>
+        </div>
+      </div>
+      <div class="input-group">
+        <label>🎯 预期寿命：<span id="lifeSpanValue">80</span> 岁</label>
+        <input type="range" id="lifeExpectancy" min="50" max="120" value="80">
+      </div>
     </div>
-    <div class="btn-group">
-      <button class="btn btn-primary" id="startBtn">&#127916; 开始</button>
-      <button class="btn btn-reset" id="resetBtn">&#10218; 重置</button>
+    <button class="btn-start" id="startBtn">✨ 看看我还剩多少时间</button>
+  </section>
+
+  <!-- ──── result ──── -->
+  <section id="resultSection">
+    <div class="countdown-card" id="countdownCard">
+      <div class="countdown-label">⏱ 你的生命倒计时</div>
+      <div class="countdown-main" id="countdownDisplay">
+        <div class="countdown-item"><span class="num" id="cdYears">0</span><span class="lbl">年</span></div>
+        <span class="countdown-sep">·</span>
+        <div class="countdown-item"><span class="num" id="cdMonths">0</span><span class="lbl">月</span></div>
+        <span class="countdown-sep">·</span>
+        <div class="countdown-item"><span class="num" id="cdDays">0</span><span class="lbl">天</span></div>
+        <span class="countdown-sep">·</span>
+        <div class="countdown-item"><span class="num" id="cdHours">00</span><span class="lbl">时</span></div>
+        <span class="countdown-sep">∶</span>
+        <div class="countdown-item"><span class="num" id="cdMinutes">00</span><span class="lbl">分</span></div>
+        <span class="countdown-sep">∶</span>
+        <div class="countdown-item"><span class="num" id="cdSeconds">00</span><span class="lbl">秒</span></div>
+      </div>
     </div>
-    <div class="hint" id="hint">请将手指放在屏幕上开始</div>
+
+    <!-- progress -->
+    <div class="progress-section" id="progressSection">
+      <div class="progress-ring-wrap">
+        <svg viewBox="0 0 140 140">
+          <defs>
+            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#f0c040"/>
+              <stop offset="100%" stop-color="#ff8a5c"/>
+            </linearGradient>
+          </defs>
+          <circle class="progress-ring-bg" cx="70" cy="70" r="58"/>
+          <circle class="progress-ring-fill" id="progressRing" cx="70" cy="70" r="58"
+            stroke-dasharray="364.4" stroke-dashoffset="0"/>
+        </svg>
+        <div class="progress-center">
+          <div class="pct" id="usedPct">0%</div>
+          <div class="pct-lbl">已度过</div>
+        </div>
+      </div>
+      <div class="progress-text">
+        <div class="stat-row"><span>📅 已活</span><span class="val" id="statLived">0 天</span></div>
+        <div class="stat-row"><span>⏳ 还剩</span><span class="val" id="statRemain">0 天</span></div>
+        <div class="stat-row"><span>🎂 生日那天</span><span class="val" id="statBirthday">-</span></div>
+      </div>
+    </div>
+
+    <!-- metrics -->
+    <div class="metrics-grid" id="metricsGrid"></div>
+  </section>
+
+  <footer class="site-footer">
+    <p>每一秒都是你生命中最年轻的一秒。<br>
+    <span class="highlight">别等明天，就现在，去热烈地活着。</span></p>
   </footer>
-</div>
+</main>
 
 <script>
-(function() {
-  'use strict';
+// ============================================================
+//  QUOTES
+// ============================================================
+const QUOTES = [
+  '"生命如同沙漏，我们总以为还有很多，但每一粒沙落下都不会回头。"',
+  '"你浪费的今天，是昨天死去的人奢望的明天。"',
+  '"不要等待，因为时机永远不会"刚好"。从现在开始，做你想做的事。"',
+  '"生命不在于呼吸的次数，而在于那些令你屏息的时刻。"',
+  '"每一天都是一份礼物，这就是为什么它被称为"当下"。"',
+  '"最大的浪费不是金钱，而是时间。它不可再生，不可逆转。"',
+  '"人生最大的遗憾，不是我做不到，而是我本可以。"',
+  '"种一棵树最好的时间是十年前，其次是现在。"',
+  '"只有把握当下，才能不负此生。"',
+  '"活着不是为了等待风暴过去，而是学会在雨中起舞。"',
+];
+const quoteEl = document.getElementById('quoteText');
+let quoteIdx = 0;
+setInterval(()=>{
+  quoteIdx=(quoteIdx+1)%QUOTES.length;
+  quoteEl.style.opacity=0;
+  setTimeout(()=>{quoteEl.textContent=QUOTES[quoteIdx];quoteEl.style.opacity=1;},400);
+},6000);
 
-  // DOM refs
-  const touchArea = document.getElementById('touchArea');
-  const canvas = document.getElementById('overlay');
-  const ctx = canvas.getContext('2d');
-  const countSlider = document.getElementById('countSlider');
-  const countDisplay = document.getElementById('countDisplay');
-  const selectedNum = document.getElementById('selectedNum');
-  const targetNum = document.getElementById('targetNum');
-  const startBtn = document.getElementById('startBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const hint = document.getElementById('hint');
-  const flashOverlay = document.getElementById('flashOverlay');
+// ============================================================
+//  PARTICLES
+// ============================================================
+const canvas = document.getElementById('particleCanvas');
+const ctx = canvas.getContext('2d');
+let W,H;
 
-  // State
-  const state = {
-    circles: [],
-    touchMap: new Map(),
-    nextId: 1,
-    targetCount: 3,
-    phase: 'idle',
-    selectedSoFar: 0,
-    animId: null,
+function resizeCanvas(){
+  W=canvas.width=window.innerWidth;
+  H=canvas.height=window.innerHeight;
+}
+window.addEventListener('resize',resizeCanvas);
+resizeCanvas();
+
+class SandParticle{
+  constructor(){this.reset();}
+  reset(){
+    this.x=Math.random()*W;
+    this.y=-10;
+    this.size=1.5+Math.random()*2.5;
+    this.speedY=0.3+Math.random()*0.8;
+    this.speedX=(Math.random()-0.5)*0.3;
+    this.opacity=0.2+Math.random()*0.5;
+    this.hue=38+Math.random()*15;
+  }
+  update(){
+    this.y+=this.speedY;
+    this.x+=this.speedX;
+    if(this.y>H+10) this.reset();
+  }
+  draw(){
+    ctx.beginPath();
+    ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+    ctx.fillStyle=`hsla(${this.hue},80%,60%,${this.opacity})`;
+    ctx.fill();
+  }
+}
+
+class StarParticle{
+  constructor(){this.reset(true);}
+  reset(init=false){
+    this.x=Math.random()*W;
+    this.y=Math.random()*H;
+    this.size=0.5+Math.random()*1.5;
+    this.twinkleSpeed=0.005+Math.random()*0.02;
+    this.twinklePhase=Math.random()*Math.PI*2;
+    this.baseOpacity=0.1+Math.random()*0.4;
+  }
+  update(){
+    this.twinklePhase+=this.twinkleSpeed;
+  }
+  draw(){
+    const o=this.baseOpacity*(0.5+0.5*Math.sin(this.twinklePhase));
+    ctx.beginPath();
+    ctx.arc(this.x,this.y,this.size,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${o})`;
+    ctx.fill();
+  }
+}
+
+const sands=[];
+const stars=[];
+for(let i=0;i<80;i++) sands.push(new SandParticle());
+for(let i=0;i<60;i++) stars.push(new StarParticle());
+
+let runningAnims=false;
+
+function animateParticles(){
+  ctx.clearRect(0,0,W,H);
+  stars.forEach(s=>{s.update();s.draw();});
+  sands.forEach(s=>{s.update();s.draw();});
+  if(runningAnims) requestAnimationFrame(animateParticles);
+}
+animateParticles();
+
+// ============================================================
+//  STATE
+// ============================================================
+let lifeData = null;
+let timerInterval = null;
+
+const DEFAULT_LIFE = 80;
+ const birthYear = document.getElementById('birthYear');
+ const birthMonth = document.getElementById('birthMonth');
+ const birthDay = document.getElementById('birthDay');
+ const lifeSpanSlider = document.getElementById('lifeExpectancy');
+ const lifeSpanValue = document.getElementById('lifeSpanValue');
+
+ // 填充年月日下拉框并设置默认值
+ const curYear = new Date().getFullYear();
+ for(let y = curYear; y >= 1950; y--){
+   const opt = document.createElement('option');
+   opt.value = y; opt.textContent = y + '年';
+   birthYear.appendChild(opt);
+ }
+ for(let m = 1; m <= 12; m++){
+   const opt = document.createElement('option');
+   opt.value = m; opt.textContent = m + '月';
+   birthMonth.appendChild(opt);
+ }
+ for(let d = 1; d <= 31; d++){
+   const opt = document.createElement('option');
+   opt.value = d; opt.textContent = d + '日';
+   birthDay.appendChild(opt);
+ }
+ const defaultDate = new Date();
+ defaultDate.setFullYear(defaultDate.getFullYear() - 20);
+ birthYear.value = defaultDate.getFullYear();
+ birthMonth.value = defaultDate.getMonth() + 1;
+ birthDay.value = defaultDate.getDate();
+lifeSpanSlider.addEventListener('input',()=>{
+  lifeSpanValue.textContent = lifeSpanSlider.value;
+});
+
+// ============================================================
+//  CALCULATIONS
+// ============================================================
+function calcLife(birthDate, lifeYears){
+  const now = new Date();
+  const birth = new Date(birthDate);
+  if(isNaN(birth.getTime())) return null;
+
+  const ageMs = now - birth;
+  const totalMs = lifeYears * 365.25 * 86400000;
+  const remainingMs = Math.max(0, totalMs - ageMs);
+  const remainingDays = remainingMs / 86400000;
+  const ageDays = ageMs / 86400000;
+  const usedPct = Math.min(100, (ageMs / totalMs) * 100);
+
+  // Breakdown
+  const years = Math.floor(remainingDays / 365.25);
+  const months = Math.floor((remainingDays % 365.25) / 30.44);
+  const days = Math.floor(remainingDays % 30.44);
+  const hrs = Math.floor((remainingMs % 86400000) / 3600000);
+  const mins = Math.floor((remainingMs % 3600000) / 60000);
+  const secs = Math.floor((remainingMs % 60000) / 1000);
+
+  // Next birthday
+  const nextBday = new Date(now.getFullYear(), birth.getMonth(), birth.getDate());
+  if(nextBday < now) nextBday.setFullYear(nextBday.getFullYear()+1);
+  const daysToBday = Math.ceil((nextBday - now) / 86400000);
+
+  return {
+    years, months, days, hrs, mins, secs,
+    remainingDays: Math.floor(remainingDays),
+    remainingMs,
+    ageDays: Math.floor(ageDays),
+    ageYears: Math.floor(ageMs / (365.25*86400000)),
+    usedPct: Math.min(100, usedPct),
+    isOverage: ageMs >= totalMs,
+    lifeYears,
+    daysToBday
   };
+}
 
-  // Orb animation state
-  const orb = {
-    x: 0, y: 0,
-    target: null,
-    speed: 4,
-    minSpeed: 0.8,
-    maxSpeed: 14,
-    bounces: 0,
-    totalBounces: 12,
-    round: 0,
-    isFinalApproach: false,
-    finalCircle: null,
-    trail: [],
-  };
+function getMetrics(data){
+  if(!data || data.isOverage) return [];
+  const d = data.remainingDays;
+  const y = d / 365.25;
+  return [
+    {icon:'😴',value:fmtNum(d),desc:'安睡的夜晚',sub:`相当于 ${(d*8/24).toFixed(0)} 天在美梦中`},
+    {icon:'🍜',value:fmtNum(d*3),desc:'品尝美食的机会',sub:'一日三餐，每一餐都是礼物'},
+    {icon:'✈️',value:(y*2).toFixed(1),desc:'周逍遥假期',sub:'每年2周，尽情去探索世界'},
+    {icon:'📚',value:fmtNum(Math.floor(d/30)),desc:'本启迪心灵的书籍',sub:'每月一本，丰富你的思想'},
+    {icon:'🌅',value:fmtNum(d),desc:'次日出与日落',sub:'每一次都独一无二'},
+    {icon:'💓',value:fmtNum(Math.floor(d*86400*70)),desc:'次心跳',sub:'每一次都在提醒你活着'},
+    {icon:'🤗',value:fmtNum(d),desc:'次温暖的拥抱',sub:'每天一次，传递爱与温度'},
+    {icon:'😂',value:fmtNum(d*15),desc:'次开怀大笑',sub:'每天至少笑15次'},
+    {icon:'🌍',value:(y/2).toFixed(1),desc:'次环游世界',sub:'用脚步丈量这个星球'},
+    {icon:'☕',value:fmtNum(d*2),desc:'杯悠闲的咖啡',sub:'每天两杯，品味生活的醇香'},
+  ];
+}
 
-  // Canvas resize
-  function resizeCanvas() {
-    const rect = touchArea.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = rect.height + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
+function fmtNum(n){
+  if(n>999999) return (n/10000).toFixed(0)+'万';
+  return n.toLocaleString();
+}
 
-  function getTouchAreaRect() {
-    return touchArea.getBoundingClientRect();
-  }
+// ============================================================
+//  RENDER
+// ============================================================
+function pad(n){return n.toString().padStart(2,'0')}
 
-  function clientToArea(clientX, clientY) {
-    const rect = getTouchAreaRect();
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  }
+function updateDisplay(data){
+  if(!data) return;
+  const isOverage = data.isOverage;
 
-  // Circle DOM helpers
-  function createCircleElement() {
-    const el = document.createElement('div');
-    el.className = 'finger-circle';
-    el.innerHTML = '<div class="inner"></div><div class="checkmark">&#10022;</div><div class="number-tag"></div>';
-    return el;
-  }
+  document.getElementById('cdYears').textContent = isOverage ? '∞' : data.years;
+  document.getElementById('cdMonths').textContent = isOverage ? '∞' : data.months;
+  document.getElementById('cdDays').textContent = isOverage ? '∞' : data.days;
+  document.getElementById('cdHours').textContent = isOverage ? '∞' : pad(data.hrs);
+  document.getElementById('cdMinutes').textContent = isOverage ? '∞' : pad(data.mins);
+  document.getElementById('cdSeconds').textContent = isOverage ? '∞' : pad(data.secs);
 
-  function updateCirclePosition(ele, x, y) {
-    ele.style.left = x + 'px';
-    ele.style.top = y + 'px';
-  }
+  // Progress ring
+  const circumference = 364.4;
+  const offset = circumference * (1 - data.usedPct / 100);
+  document.getElementById('progressRing').style.strokeDashoffset = offset;
+  document.getElementById('usedPct').textContent = isOverage ? '∞' : data.usedPct.toFixed(1)+'%';
 
-  // Add / Remove circles
-  function addCircle(x, y, touchId) {
-    if (state.phase === 'selecting' || state.phase === 'done') return;
-    const id = state.nextId++;
-    const ele = createCircleElement();
-    updateCirclePosition(ele, x, y);
-    touchArea.appendChild(ele);
-    const circle = { id, x, y, selected: false, order: 0, ele, beingTouched: !!touchId };
-    state.circles.push(circle);
-    if (touchId !== null) {
-      state.touchMap.set(touchId, circle);
-    }
-    updateUI();
-    return circle;
-  }
+  document.getElementById('statLived').textContent = fmtNum(data.ageDays)+' 天';
+  document.getElementById('statRemain').textContent = isOverage ? '🎉 每一天都是赚到的！' : fmtNum(data.remainingDays)+' 天';
+  document.getElementById('statBirthday').textContent = isOverage ? '-' : data.daysToBday+' 天后';
 
-  function removeCircle(circle) {
-    if (circle.selected) return;
-    if (state.phase === 'selecting') {
-      circle.beingTouched = false;
-      return;
-    }
-    const idx = state.circles.indexOf(circle);
-    if (idx !== -1) {
-      state.circles.splice(idx, 1);
-      if (circle.ele.parentNode) circle.ele.parentNode.removeChild(circle.ele);
-    }
-    for (const [key, val] of state.touchMap) {
-      if (val.id === circle.id) { state.touchMap.delete(key); break; }
-    }
-    updateUI();
-  }
-
-  function clearAllCircles() {
-    state.circles.forEach(c => { if (c.ele.parentNode) c.ele.parentNode.removeChild(c.ele); });
-    state.circles = [];
-    state.touchMap.clear();
-    state.selectedSoFar = 0;
-    updateUI();
-  }
-
-  // UI updates
-  function updateUI() {
-    selectedNum.textContent = state.selectedSoFar;
-    targetNum.textContent = state.targetCount;
-    countDisplay.textContent = state.targetCount;
-
-    if (state.phase === 'idle') {
-      if (state.circles.length === 0) {
-        startBtn.disabled = true;
-        hint.textContent = '请将手指放在屏幕上开始';
-        hint.className = 'hint';
-      } else if (state.circles.length < state.targetCount) {
-        startBtn.disabled = true;
-        hint.textContent = '还需要 ' + (state.targetCount - state.circles.length) + ' 位参与者 (目前 ' + state.circles.length + ' 人)';
-        hint.className = 'hint active';
-      } else {
-        startBtn.disabled = false;
-        hint.textContent = '已就绪 — 点击「开始」进行挑选';
-        hint.className = 'hint active';
-      }
-    } else if (state.phase === 'selecting') {
-      startBtn.disabled = true;
-      hint.textContent = '挑选中… 请保持手指触碰屏幕';
-      hint.className = 'hint active';
-    } else if (state.phase === 'done') {
-      startBtn.disabled = true;
-      hint.textContent = '&#127881; 挑选完成！点击「重置」重新开始';
-      hint.className = 'hint success';
-    }
-  }
-
-  // Touch / Mouse events
-  function handleTouchStart(e) {
-    e.preventDefault();
-    if (state.phase === 'selecting' || state.phase === 'done') return;
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const t = e.changedTouches[i];
-      const pos = clientToArea(t.clientX, t.clientY);
-      if (!state.touchMap.has(t.identifier)) {
-        addCircle(pos.x, pos.y, t.identifier);
-      }
-    }
-  }
-
-  function handleTouchEnd(e) {
-    e.preventDefault();
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const t = e.changedTouches[i];
-      const circle = state.touchMap.get(t.identifier);
-      if (circle) {
-        state.touchMap.delete(t.identifier);
-        removeCircle(circle);
-      }
-    }
-  }
-
-  function handleTouchCancel(e) {
-    e.preventDefault();
-    for (const [, circle] of state.touchMap) {
-      removeCircle(circle);
-    }
-    state.touchMap.clear();
-  }
-
-  function handleMouseDown(e) {
-    if (e.button !== 0) return;
-    if (state.phase === 'selecting' || state.phase === 'done') return;
-    const pos = clientToArea(e.clientX, e.clientY);
-    const existing = state.circles.find(c =>
-      Math.hypot(c.x - pos.x, c.y - pos.y) < 30
-    );
-    if (existing && !existing.selected) {
-      removeCircle(existing);
-    } else if (!existing) {
-      addCircle(pos.x, pos.y, null);
-    }
-  }
-
-  // Orb animation selection logic
-  function getUnselectedCircles() {
-    return state.circles.filter(c => !c.selected);
-  }
-
-  function pickRandomCircle(exclude) {
-    const candidates = getUnselectedCircles().filter(c => c !== exclude);
-    if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
-  }
-
-  function startSelectionRound() {
-    const unselected = getUnselectedCircles();
-    if (unselected.length === 0) {
-      finishSelection();
-      return;
-    }
-
-    orb.round++;
-    orb.bounces = 0;
-    orb.isFinalApproach = false;
-    orb.finalCircle = null;
-
-    orb.totalBounces = 8 + orb.round * 3;
-    if (orb.totalBounces > 30) orb.totalBounces = 30;
-
-    const finalTarget = unselected[Math.floor(Math.random() * unselected.length)];
-    orb.finalCircle = finalTarget;
-
-    const firstTarget = pickRandomCircle(finalTarget);
-    if (!firstTarget) {
-      selectCircle(finalTarget);
-      return;
-    }
-
-    orb.x = firstTarget.x;
-    orb.y = firstTarget.y;
-    orb.target = firstTarget;
-    orb.speed = 4;
-    orb.trail = [{ x: orb.x, y: orb.y }];
-
-    if (!state.animId) {
-      lastTime = performance.now();
-      state.animId = requestAnimationFrame(animationLoop);
-    }
-  }
-
-  function selectCircle(circle) {
-    if (circle.selected) return;
-    circle.selected = true;
-    circle.order = state.selectedSoFar + 1;
-    state.selectedSoFar++;
-
-    circle.ele.classList.add('selected');
-    const tag = circle.ele.querySelector('.number-tag');
-    if (tag) tag.textContent = circle.order;
-
-    flashOverlay.style.background = 'radial-gradient(circle at ' + circle.x + 'px ' + circle.y + 'px, rgba(255,215,0,0.25), transparent 60%)';
-    flashOverlay.classList.add('show');
-    setTimeout(function() { flashOverlay.classList.remove('show'); }, 300);
-
-    updateUI();
-
-    if (state.selectedSoFar >= state.targetCount) {
-      setTimeout(finishSelection, 500);
-    } else {
-      setTimeout(function() {
-        if (state.phase === 'selecting') {
-          orb.trail = [];
-          startSelectionRound();
-        }
-      }, 800);
-    }
-  }
-
-  function finishSelection() {
-    state.phase = 'done';
-    if (state.animId) {
-      cancelAnimationFrame(state.animId);
-      state.animId = null;
-    }
-    orb.trail = [];
-    drawCanvas();
-
-    flashOverlay.style.background = 'radial-gradient(ellipse at 50% 50%, rgba(255,215,0,0.15), transparent 70%)';
-    flashOverlay.classList.add('show');
-    setTimeout(function() { flashOverlay.classList.remove('show'); }, 600);
-    updateUI();
-  }
-
-  // Animation loop
-  let lastTime = 0;
-
-  function animationLoop(timestamp) {
-    if (state.phase !== 'selecting') return;
-    var dt = Math.min((timestamp - lastTime) / 16.667, 3);
-    lastTime = timestamp;
-    updateOrb(dt);
-    drawCanvas();
-    state.animId = requestAnimationFrame(animationLoop);
-  }
-
-  function updateOrb(dt) {
-    if (!orb.target) return;
-
-    var dx = orb.target.x - orb.x;
-    var dy = orb.target.y - orb.y;
-    var dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < 3) {
-      orb.x = orb.target.x;
-      orb.y = orb.target.y;
-
-      if (orb.isFinalApproach) {
-        selectCircle(orb.finalCircle);
-        return;
-      }
-
-      orb.bounces++;
-      orb.trail.push({ x: orb.x, y: orb.y });
-      if (orb.trail.length > 8) orb.trail.shift();
-
-      if (orb.bounces >= orb.totalBounces) {
-        orb.isFinalApproach = true;
-        orb.target = orb.finalCircle;
-        orb.speed = Math.max(orb.minSpeed, orb.speed * 0.4);
-      } else {
-        var exclude = orb.target;
-        var next = pickRandomCircle(exclude);
-        if (!next) {
-          orb.isFinalApproach = true;
-          orb.target = orb.finalCircle;
-          orb.speed = Math.max(orb.minSpeed, orb.speed * 0.4);
-        } else {
-          orb.target = next;
-          var progress = orb.bounces / orb.totalBounces;
-          if (progress < 0.7) {
-            orb.speed = Math.min(orb.maxSpeed, orb.speed * 1.08);
-          } else {
-            orb.speed = Math.max(orb.minSpeed, orb.speed * 0.94);
-          }
-        }
-      }
-    } else {
-      var speedFactor = orb.isFinalApproach ? 0.5 : 1;
-      var step = orb.speed * dt * speedFactor;
-      var moveDist = Math.min(step, dist);
-      orb.x += (dx / dist) * moveDist;
-      orb.y += (dy / dist) * moveDist;
-
-      if (orb.trail.length === 0) {
-        orb.trail.push({ x: orb.x, y: orb.y });
-      } else {
-        var last = orb.trail[orb.trail.length - 1];
-        if (Math.hypot(orb.x - last.x, orb.y - last.y) > 6) {
-          orb.trail.push({ x: orb.x, y: orb.y });
-          if (orb.trail.length > 10) orb.trail.shift();
-        }
-      }
-    }
-  }
-
-  function drawCanvas() {
-    var rect = touchArea.getBoundingClientRect();
-    var w = rect.width;
-    var h = rect.height;
-    ctx.clearRect(0, 0, w, h);
-
-    // Subtle connections between circles
-    if (state.circles.length > 1) {
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-      ctx.lineWidth = 1;
-      var unselected = state.circles.filter(function(c) { return !c.selected; });
-      for (var i = 1; i < unselected.length; i++) {
-        ctx.moveTo(unselected[i-1].x, unselected[i-1].y);
-        ctx.lineTo(unselected[i].x, unselected[i].y);
-      }
-      ctx.stroke();
-    }
-
-    // Orb trail
-    if (orb.trail.length > 1) {
-      for (var i = 1; i < orb.trail.length; i++) {
-        var alpha = i / orb.trail.length * 0.4;
-        ctx.beginPath();
-        ctx.moveTo(orb.trail[i-1].x, orb.trail[i-1].y);
-        ctx.lineTo(orb.trail[i].x, orb.trail[i].y);
-        ctx.strokeStyle = 'rgba(100, 180, 255, ' + alpha + ')';
-        ctx.lineWidth = 2 * (i / orb.trail.length);
-        ctx.stroke();
-      }
-    }
-
-    // Orb glow
-    if (orb.x !== 0 || orb.y !== 0) {
-      var gradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, 50);
-      gradient.addColorStop(0, 'rgba(200, 230, 255, 1)');
-      gradient.addColorStop(0.15, 'rgba(150, 200, 255, 0.8)');
-      gradient.addColorStop(0.4, 'rgba(80, 130, 255, 0.2)');
-      gradient.addColorStop(1, 'rgba(80, 130, 255, 0)');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(orb.x, orb.y, 50, 0, Math.PI * 2);
-      ctx.fill();
-
-      var orbGrad = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, 12);
-      orbGrad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-      orbGrad.addColorStop(0.5, 'rgba(200, 230, 255, 0.6)');
-      orbGrad.addColorStop(1, 'rgba(100, 180, 255, 0)');
-      ctx.fillStyle = orbGrad;
-      ctx.beginPath();
-      ctx.arc(orb.x, orb.y, 12, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.arc(orb.x, orb.y, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Final approach beam
-    if (orb.isFinalApproach && orb.target) {
-      ctx.beginPath();
-      ctx.moveTo(orb.x, orb.y);
-      ctx.lineTo(orb.target.x, orb.target.y);
-      ctx.strokeStyle = 'rgba(255, 215, 0, 0.15)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([6, 8]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // Pulse rings on unselected circles
-    if (state.phase === 'selecting') {
-      var unsel = state.circles.filter(function(c) { return !c.selected; });
-      var pulse = Math.sin(performance.now() / 300) * 0.3 + 0.7;
-      for (var i = 0; i < unsel.length; i++) {
-        ctx.beginPath();
-        ctx.arc(unsel[i].x, unsel[i].y, 32, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.08 * pulse) + ')';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-    }
-  }
-
-  // Phase transitions
-  function startSelection() {
-    if (state.phase === 'selecting' || state.phase === 'done') return;
-    if (state.circles.length < state.targetCount) return;
-
-    state.circles.forEach(function(c) { c.beingTouched = true; });
-
-    state.phase = 'selecting';
-    state.selectedSoFar = 0;
-    state.circles.forEach(function(c) {
-      c.selected = false;
-      c.order = 0;
-      c.ele.classList.remove('selected');
-      var tag = c.ele.querySelector('.number-tag');
-      if (tag) tag.textContent = '';
+  // Metrics
+  const grid = document.getElementById('metricsGrid');
+  if(!grid.dataset.initialized){
+    grid.innerHTML = '';
+    const metrics = getMetrics(data);
+    metrics.forEach((m,i)=>{
+      const card = document.createElement('div');
+      card.className = 'metric-card';
+      card.dataset.idx = i;
+      card.innerHTML = `
+        <div class="icon">${m.icon}</div>
+        <div class="value" data-type="metric-val">${m.value}</div>
+        <div class="desc">${m.desc}</div>
+        <div class="sub">${m.sub}</div>
+      `;
+      grid.appendChild(card);
+      setTimeout(()=>card.classList.add('animate-in'), i*80);
     });
-
-    updateUI();
-
-    var first = state.circles[Math.floor(Math.random() * state.circles.length)];
-    orb.x = first.x;
-    orb.y = first.y;
-    orb.trail = [];
-
-    startSelectionRound();
+    grid.dataset.initialized = '1';
   }
 
-  function resetAll() {
-    if (state.animId) {
-      cancelAnimationFrame(state.animId);
-      state.animId = null;
-    }
-    state.phase = 'idle';
-    state.selectedSoFar = 0;
-    orb.trail = [];
-    orb.x = 0; orb.y = 0;
-    orb.target = null;
-    orb.isFinalApproach = false;
-    orb.finalCircle = null;
-    flashOverlay.classList.remove('show');
-
-    state.circles.forEach(function(c) {
-      if (c.ele.parentNode) c.ele.parentNode.removeChild(c.ele);
-    });
-    state.circles = [];
-    state.touchMap.clear();
-    state.nextId = 1;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    updateUI();
+  // overage style
+  const card = document.getElementById('countdownCard');
+  if(isOverage){
+    card.classList.remove('active');
+    document.getElementById('countdownDisplay').innerHTML = `
+      <div style="font-size:clamp(18px,4vw,32px);color:var(--gold);padding:20px 0;">
+        🎉 你已经超越了平均寿命！<br>
+        <span style="font-size:0.7em;color:var(--text-dim);">已多活了 ${data.remainingDays < 0 ? fmtNum(Math.floor(Math.abs(data.remainingDays))) : 0} 天<br>
+        每一天都是命运的馈赠，请热烈地活着！</span>
+      </div>
+    `;
+  } else {
+    card.classList.add('active');
   }
+}
 
-  // Slider
-  countSlider.addEventListener('input', function() {
-    state.targetCount = parseInt(this.value, 10);
-    updateUI();
-  });
+// ============================================================
+//  MAIN LOOP
+// ============================================================
+function tick(){
+  if(!lifeData) return;
+   const now = calcLife(birthYear.value+'-'+String(birthMonth.value).padStart(2,'0')+'-'+String(birthDay.value).padStart(2,'0'), lifeData.lifeYears);
+  if(now) updateDisplay(now);
+}
 
-  // Buttons
-  startBtn.addEventListener('click', startSelection);
-  resetBtn.addEventListener('click', resetAll);
+function startCountdown(){
+   const val = birthYear.value+'-'+String(birthMonth.value).padStart(2,'0')+'-'+String(birthDay.value).padStart(2,'0');
+  if(!val){ alert('请先输入你的出生日期 🙏'); return; }
 
-  // Events
-  touchArea.addEventListener('touchstart', handleTouchStart, { passive: false });
-  touchArea.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
-  touchArea.addEventListener('touchend', handleTouchEnd, { passive: false });
-  touchArea.addEventListener('touchcancel', handleTouchCancel, { passive: false });
-  touchArea.addEventListener('mousedown', handleMouseDown);
+  const life = calcLife(val, parseFloat(lifeSpanSlider.value));
+  if(!life){ alert('请输入有效的出生日期 🙏'); return; }
 
-  // Resize
-  window.addEventListener('resize', function() {
-    resizeCanvas();
-    state.circles.forEach(function(c) {
-      updateCirclePosition(c.ele, c.x, c.y);
-    });
-  });
+  lifeData = life;
+  runningAnims = true;
+  animateParticles();
 
-  // Init
-  resizeCanvas();
-  updateUI();
+  // transition
+  document.getElementById('inputSection').classList.add('hidden');
+  const resultSec = document.getElementById('resultSection');
+  resultSec.style.display = 'block';
+  setTimeout(()=>resultSec.classList.add('visible'), 50);
 
-  // Idle draw loop
-  function idleDraw() {
-    if (state.phase !== 'idle') return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (state.circles.length > 1) {
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-      ctx.lineWidth = 1;
-      for (var i = 1; i < state.circles.length; i++) {
-        ctx.moveTo(state.circles[i-1].x, state.circles[i-1].y);
-        ctx.lineTo(state.circles[i].x, state.circles[i].y);
-      }
-      ctx.stroke();
-      var pulse = Math.sin(performance.now() / 400) * 0.3 + 0.7;
-      for (var i = 0; i < state.circles.length; i++) {
-        ctx.beginPath();
-        ctx.arc(state.circles[i].x, state.circles[i].y, 30, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,' + (0.05 * pulse) + ')';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-    }
-    requestAnimationFrame(idleDraw);
-  }
-  requestAnimationFrame(idleDraw);
+  // initial render
+  tick();
 
-})();
+  // timer
+  if(timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(tick, 1000);
+}
+
+document.getElementById('startBtn').addEventListener('click', startCountdown);
+ function onEnter(e){if(e.key==='Enter') startCountdown();}
+ birthYear.addEventListener('keydown', onEnter);
+ birthMonth.addEventListener('keydown', onEnter);
+ birthDay.addEventListener('keydown', onEnter);
+
+// ============================================================
+//  INIT - show example on load
+// ============================================================
+setTimeout(()=>{quoteEl.style.opacity=1;},500);
 </script>
 </body>
 </html>
